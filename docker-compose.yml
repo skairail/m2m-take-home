@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ingest}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ingest}
+      POSTGRES_DB: ${POSTGRES_DB:-ingest}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-ingest} -d ${POSTGRES_DB:-ingest}",
+        ]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-ingest}:${POSTGRES_PASSWORD:-ingest}@postgres:5432/${POSTGRES_DB:-ingest}
+      DEVICE_TOKEN: ${DEVICE_TOKEN:-dev-shared-token}
+      OFFLINE_THRESHOLD_SECONDS: ${OFFLINE_THRESHOLD_SECONDS:-300}
+      PORT: "3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
