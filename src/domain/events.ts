@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export const EVENT_TYPES = [
   "armed",
   "disarmed",
@@ -8,48 +10,121 @@ export const EVENT_TYPES = [
 
 export type EventType = (typeof EVENT_TYPES)[number];
 
-export type ArmedPayload = { mode: "away" | "stay"; user_id: number };
-export type DisarmedPayload = { user_id: number };
-export type SensorPayload = { sensor_id: number };
-export type HeartbeatPayload = { battery_pct: number; rssi_dbm: number };
+const uuidSchema = z
+  .string()
+  .uuid({ message: "event_id must be a UUID" });
 
-export type EventPayload =
-  | ArmedPayload
-  | DisarmedPayload
-  | SensorPayload
-  | HeartbeatPayload;
+const occurredAtSchema = z
+  .string()
+  .min(1, "occurred_at must be an ISO 8601 timestamp")
+  .refine((value) => !Number.isNaN(Date.parse(value)), {
+    message: "occurred_at must be an ISO 8601 timestamp",
+  })
+  .transform((value) => new Date(value));
 
-export type NewEvent =
-  | {
-      event_id: string;
-      type: "armed";
-      occurred_at: Date;
-      payload: ArmedPayload;
-    }
-  | {
-      event_id: string;
-      type: "disarmed";
-      occurred_at: Date;
-      payload: DisarmedPayload;
-    }
-  | {
-      event_id: string;
-      type: "sensor_opened";
-      occurred_at: Date;
-      payload: SensorPayload;
-    }
-  | {
-      event_id: string;
-      type: "sensor_closed";
-      occurred_at: Date;
-      payload: SensorPayload;
-    }
-  | {
-      event_id: string;
-      type: "heartbeat";
-      occurred_at: Date;
-      payload: HeartbeatPayload;
-    };
+const armedPayload = z
+  .object({
+    mode: z.enum(["away", "stay"], {
+      message: "payload.mode must be away or stay",
+    }),
+    user_id: z.number().int({ message: "payload.user_id must be an integer" }),
+  })
+  .strict();
+
+const disarmedPayload = z
+  .object({
+    user_id: z.number().int({ message: "payload.user_id must be an integer" }),
+  })
+  .strict();
+
+const sensorPayload = z
+  .object({
+    sensor_id: z
+      .number()
+      .int()
+      .min(1)
+      .max(64, { message: "payload.sensor_id must be an integer from 1 to 64" }),
+  })
+  .strict();
+
+const heartbeatPayload = z
+  .object({
+    battery_pct: z
+      .number()
+      .int()
+      .min(0)
+      .max(100, {
+        message: "payload.battery_pct must be an integer from 0 to 100",
+      }),
+    rssi_dbm: z
+      .number()
+      .int({ message: "payload.rssi_dbm must be an integer" }),
+  })
+  .strict();
+
+export const eventEnvelopeSchema = z.discriminatedUnion(
+  "type",
+  [
+    z
+      .object({
+        event_id: uuidSchema,
+        type: z.literal("armed"),
+        occurred_at: occurredAtSchema,
+        payload: armedPayload,
+      })
+      .strict(),
+    z
+      .object({
+        event_id: uuidSchema,
+        type: z.literal("disarmed"),
+        occurred_at: occurredAtSchema,
+        payload: disarmedPayload,
+      })
+      .strict(),
+    z
+      .object({
+        event_id: uuidSchema,
+        type: z.literal("sensor_opened"),
+        occurred_at: occurredAtSchema,
+        payload: sensorPayload,
+      })
+      .strict(),
+    z
+      .object({
+        event_id: uuidSchema,
+        type: z.literal("sensor_closed"),
+        occurred_at: occurredAtSchema,
+        payload: sensorPayload,
+      })
+      .strict(),
+    z
+      .object({
+        event_id: uuidSchema,
+        type: z.literal("heartbeat"),
+        occurred_at: occurredAtSchema,
+        payload: heartbeatPayload,
+      })
+      .strict(),
+  ],
+  {
+    errorMap: (issue, ctx) => {
+      if (issue.code === z.ZodIssueCode.invalid_union_discriminator) {
+        return {
+          message:
+            "type must be one of armed, disarmed, sensor_opened, sensor_closed, heartbeat",
+        };
+      }
+      return { message: ctx.defaultError };
+    },
+  },
+);
+
+export type NewEvent = z.infer<typeof eventEnvelopeSchema>;
+export type ArmedPayload = z.infer<typeof armedPayload>;
+export type DisarmedPayload = z.infer<typeof disarmedPayload>;
+export type SensorPayload = z.infer<typeof sensorPayload>;
+export type HeartbeatPayload = z.infer<typeof heartbeatPayload>;
+export type EventPayload = NewEvent["payload"];
 
 export type StoredEvent = {
   id: string;
@@ -60,3 +135,34 @@ export type StoredEvent = {
   received_at: Date;
   payload: EventPayload;
 };
+
+export const deviceIdSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9_-]{1,64}$/, {
+    message:
+      "device_id must be 1 to 64 letters, digits, hyphens, or underscores",
+  });
+
+type ParseResult<T> = { ok: true; value: T } | { ok: false; message: string };
+
+export function parseEventEnvelope(body: unknown): ParseResult<NewEvent> {
+  const parsed = eventEnvelopeSchema.safeParse(body);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: parsed.error.issues[0]?.message ?? "invalid event",
+    };
+  }
+  return { ok: true, value: parsed.data };
+}
+
+export function parseDeviceId(id: string): ParseResult<string> {
+  const parsed = deviceIdSchema.safeParse(id);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: parsed.error.issues[0]?.message ?? "invalid device_id",
+    };
+  }
+  return { ok: true, value: parsed.data };
+}

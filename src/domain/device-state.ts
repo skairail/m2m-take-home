@@ -2,6 +2,7 @@ import type { NewEvent } from "./events.js";
 
 export type ArmState = "armed" | "disarmed";
 export type ArmMode = "away" | "stay";
+export type DeviceOnlineStatus = "online" | "offline";
 
 export type DeviceState = {
   deviceId: string;
@@ -59,4 +60,14 @@ export function applyEvent(
   }
 
   return next;
+}
+
+export function deviceStatus(
+  lastSeenAt: Date,
+  now: Date,
+  offlineAfterMs: number,
+): DeviceOnlineStatus {
+  return now.getTime() - lastSeenAt.getTime() > offlineAfterMs
+    ? "offline"
+    : "online";
 }

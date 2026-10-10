@@ -7,8 +7,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/server.js",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node --env-file=.env dist/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
@@ -16,7 +16,8 @@
   },
   "dependencies": {
     "fastify": "^5.6.1",
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",

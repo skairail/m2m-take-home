@@ -1,12 +1,18 @@
 export {
   applyEvent,
+  deviceStatus,
   initialDeviceState,
   type ArmMode,
   type ArmState,
+  type DeviceOnlineStatus,
   type DeviceState,
 } from "./device-state.js";
 export {
   EVENT_TYPES,
+  deviceIdSchema,
+  eventEnvelopeSchema,
+  parseDeviceId,
+  parseEventEnvelope,
   type ArmedPayload,
   type DisarmedPayload,
   type EventPayload,

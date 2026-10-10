@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { applyEvent, initialDeviceState } from "../src/domain/device-state.js";
+import {
+  applyEvent,
+  deviceStatus,
+  initialDeviceState,
+} from "../src/domain/device-state.js";
 import type { NewEvent } from "../src/domain/events.js";
 
 const now = new Date("2026-09-29T14:00:00Z");
@@ -97,5 +101,22 @@ describe("applyEvent", () => {
     expect(state.lastSeenAt).toEqual(later);
     expect(state.armState).toBe("armed");
     expect(state.armMode).toBe("stay");
+  });
+});
+
+describe("deviceStatus", () => {
+  const lastSeen = new Date("2026-09-29T14:02:00Z");
+  const threshold = 5 * 60 * 1000;
+
+  it("is online at exactly the threshold", () => {
+    expect(
+      deviceStatus(lastSeen, new Date("2026-09-29T14:07:00Z"), threshold),
+    ).toBe("online");
+  });
+
+  it("is offline after the threshold", () => {
+    expect(
+      deviceStatus(lastSeen, new Date("2026-09-29T14:07:00.001Z"), threshold),
+    ).toBe("offline");
   });
 });

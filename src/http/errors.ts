@@ -16,3 +16,7 @@ export function sendError(
 ): FastifyReply {
   return reply.status(status).send(errorBody(message));
 }
+
+export function formatUtc(date: Date): string {
+  return date.toISOString().replace(/\.000Z$/, "Z");
+}

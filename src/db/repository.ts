@@ -31,18 +31,32 @@ export type IngestResult = {
   event: StoredEvent;
 };
 
+export type DeviceRecord = DeviceState;
+
 export type Repository = {
   ingest(
     deviceId: string,
     event: NewEvent,
     now: Date,
   ): Promise<IngestResult>;
+  getDevice(deviceId: string): Promise<DeviceRecord | null>;
+  listDevicesByLastSeen(
+    now: Date,
+    offlineAfterMs: number,
+    status: "online" | "offline",
+  ): Promise<Pick<DeviceRecord, "deviceId" | "lastSeenAt">[]>;
 };
 
 export function createRepository(pool: Pool): Repository {
   return {
     ingest(deviceId, event, now) {
       return ingest(pool, deviceId, event, now);
+    },
+    getDevice(deviceId) {
+      return getDevice(pool, deviceId);
+    },
+    listDevicesByLastSeen(now, offlineAfterMs, status) {
+      return listDevicesByLastSeen(pool, now, offlineAfterMs, status);
     },
   };
 }
@@ -114,6 +128,48 @@ async function ingest(
   } finally {
     client.release();
   }
+}
+
+async function getDevice(
+  pool: Pool,
+  deviceId: string,
+): Promise<DeviceRecord | null> {
+  const result = await pool.query<DeviceRow>(
+    `SELECT device_id, last_seen_at, arm_state, arm_mode, open_sensors
+     FROM device_state
+     WHERE device_id = $1`,
+    [deviceId],
+  );
+  if ((result.rowCount ?? 0) === 0) {
+    return null;
+  }
+  return toDeviceState(result.rows[0]);
+}
+
+async function listDevicesByLastSeen(
+  pool: Pool,
+  now: Date,
+  offlineAfterMs: number,
+  status: "online" | "offline",
+): Promise<Pick<DeviceRecord, "deviceId" | "lastSeenAt">[]> {
+  const cutoff = new Date(now.getTime() - offlineAfterMs);
+  const result = await pool.query<Pick<DeviceRow, "device_id" | "last_seen_at">>(
+    status === "offline"
+      ? `SELECT device_id, last_seen_at
+         FROM device_state
+         WHERE last_seen_at < $1
+         ORDER BY last_seen_at ASC, device_id ASC`
+      : `SELECT device_id, last_seen_at
+         FROM device_state
+         WHERE last_seen_at >= $1
+         ORDER BY last_seen_at ASC, device_id ASC`,
+    [cutoff],
+  );
+
+  return result.rows.map((row) => ({
+    deviceId: row.device_id,
+    lastSeenAt: row.last_seen_at,
+  }));
 }
 
 async function updateDeviceState(

@@ -2,15 +2,28 @@ import Fastify from "fastify";
 import type { Pool } from "pg";
 import type { Clock } from "../clock.js";
 import type { Config } from "../config.js";
+import { createRepository, type Repository } from "../db/repository.js";
+import { tokensMatch } from "./auth.js";
 import { errorBody, sendError } from "./errors.js";
+import { registerRoutes } from "./routes.js";
 
-export async function buildApp(_opts: {
+export async function buildApp(opts: {
   config: Config;
   pool: Pool;
   clock: Clock;
   logger?: boolean;
+  repo?: Repository;
 }) {
-  const app = Fastify({ logger: _opts.logger ?? false });
+  const app = Fastify({ logger: opts.logger ?? false });
+  const repo = opts.repo ?? createRepository(opts.pool);
+
+  app.addHook("onRequest", async (request, reply) => {
+    const header = request.headers["x-device-token"];
+    const provided = typeof header === "string" ? header : null;
+    if (!provided || !tokensMatch(provided, opts.config.deviceToken)) {
+      return sendError(reply, 401, "unauthorized");
+    }
+  });
 
   app.setNotFoundHandler((_request, reply) => {
     sendError(reply, 404, "not found");
@@ -31,6 +44,12 @@ export async function buildApp(_opts: {
 
     request.log.error(err);
     return reply.status(500).send(errorBody("internal server error"));
+  });
+
+  registerRoutes(app, {
+    repo,
+    clock: opts.clock,
+    config: opts.config,
   });
 
   await app.ready();
