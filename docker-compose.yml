@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ingest}
       POSTGRES_DB: ${POSTGRES_DB:-ingest}
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     healthcheck:
       test:
         [
@@ -23,9 +23,10 @@ services:
       - "${PORT:-3000}:3000"
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-ingest}:${POSTGRES_PASSWORD:-ingest}@postgres:5432/${POSTGRES_DB:-ingest}
-      DEVICE_TOKEN: ${DEVICE_TOKEN:-dev-shared-token}
+      DEVICE_TOKEN: ${DEVICE_TOKEN:?set DEVICE_TOKEN in .env or the environment}
       OFFLINE_THRESHOLD_SECONDS: ${OFFLINE_THRESHOLD_SECONDS:-300}
       PORT: "3000"
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
