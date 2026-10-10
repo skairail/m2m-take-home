@@ -29,7 +29,8 @@ export function applyEvent(
 ): DeviceState {
   const next: DeviceState = {
     ...state,
-    lastSeenAt: now,
+    // Requests can commit out of order, so `now` may be older than the stored value.
+    lastSeenAt: now > state.lastSeenAt ? now : state.lastSeenAt,
     openSensors: [...state.openSensors],
   };
 
@@ -67,6 +68,7 @@ export function deviceStatus(
   now: Date,
   offlineAfterMs: number,
 ): DeviceOnlineStatus {
+  // Derived at read time so a silent device becomes offline without a write.
   return now.getTime() - lastSeenAt.getTime() > offlineAfterMs
     ? "offline"
     : "online";

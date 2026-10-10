@@ -1,9 +1,11 @@
+import { isDeepStrictEqual } from "node:util";
 import type { FastifyInstance } from "fastify";
 import type { Clock } from "../clock.js";
 import type { Config } from "../config.js";
 import type { Repository } from "../db/repository.js";
 import {
   deviceStatus,
+  isoTimestampSchema,
   parseDeviceId,
   parseEventEnvelope,
   type NewEvent,
@@ -160,8 +162,12 @@ function duplicateDiffers(incoming: NewEvent, stored: StoredEvent): boolean {
   if (incoming.occurred_at.getTime() !== stored.occurred_at.getTime()) {
     return true;
   }
-  return JSON.stringify(incoming.payload) !== JSON.stringify(stored.payload);
+  // JSONB reorders keys, so compare structurally rather than by JSON text.
+  return !isDeepStrictEqual(incoming.payload, stored.payload);
 }
+
+const sinceSchema = isoTimestampSchema("since");
+const MAX_BIGINT = 9223372036854775807n;
 
 function toPublicEvent(event: StoredEvent) {
   return {
@@ -179,11 +185,14 @@ function parseSince(
   if (raw === undefined || raw === "") {
     return { ok: true, value: null };
   }
-  const ms = Date.parse(raw);
-  if (Number.isNaN(ms)) {
-    return { ok: false, message: "since must be an ISO 8601 timestamp" };
+  const parsed = sinceSchema.safeParse(raw);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: parsed.error.issues[0]?.message ?? "invalid since",
+    };
   }
-  return { ok: true, value: new Date(ms) };
+  return { ok: true, value: parsed.data };
 }
 
 function parseLimit(
@@ -214,7 +223,7 @@ function parseAfterId(
   if (raw === undefined || raw === "") {
     return { ok: true, value: null };
   }
-  if (!/^[1-9][0-9]*$/.test(raw)) {
+  if (!/^[1-9][0-9]{0,18}$/.test(raw) || BigInt(raw) > MAX_BIGINT) {
     return { ok: false, message: "after_id must be a positive integer" };
   }
   return { ok: true, value: raw };
