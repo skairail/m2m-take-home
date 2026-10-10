@@ -1,4 +1,4 @@
-import Fastify from "fastify";
+import Fastify, { type FastifyServerOptions } from "fastify";
 import type { Pool } from "pg";
 import type { Clock } from "../clock.js";
 import type { Config } from "../config.js";
@@ -11,7 +11,7 @@ export async function buildApp(opts: {
   config: Config;
   pool: Pool;
   clock: Clock;
-  logger?: boolean;
+  logger?: FastifyServerOptions["logger"];
   repo?: Repository;
 }) {
   const app = Fastify({ logger: opts.logger ?? false });

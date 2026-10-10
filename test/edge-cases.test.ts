@@ -1,10 +1,13 @@
+import { Writable } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 import { FakeClock } from "../src/clock.js";
+import { buildApp } from "../src/http/app.js";
 import {
   createApp,
   getDevice,
   getDevices,
   postEvent,
+  testConfig,
   uuid,
 } from "./helpers.js";
 import { pool } from "./pg.js";
@@ -61,6 +64,53 @@ describe("edge cases", () => {
     expect((await getDevice(app, "panel-0042")).json()).toMatchObject({
       open_sensors: [4],
       last_seen_at: "2026-09-29T14:00:00Z",
+    });
+  });
+
+  it("logs a warning when a duplicate event_id has a different payload", async () => {
+    const lines: string[] = [];
+    const stream = new Writable({
+      write(chunk, _encoding, callback) {
+        lines.push(String(chunk));
+        callback();
+      },
+    });
+    app = await buildApp({
+      config: testConfig(),
+      pool,
+      clock: new FakeClock(new Date("2026-09-29T14:00:00Z")),
+      logger: { level: "warn", stream },
+    });
+    const eventId = uuid();
+    await postEvent(app, "panel-0042", {
+      event_id: eventId,
+      type: "sensor_opened",
+      occurred_at: "2026-09-29T14:00:00Z",
+      payload: { sensor_id: 4 },
+    });
+    await postEvent(app, "panel-0042", {
+      event_id: eventId,
+      type: "sensor_opened",
+      occurred_at: "2026-09-29T14:00:00Z",
+      payload: { sensor_id: 9 },
+    });
+    expect(lines.join("")).toContain(
+      "duplicate event_id with different payload; returning stored event",
+    );
+  });
+
+  it("records sensor_closed for a never-opened sensor without changing open_sensors", async () => {
+    ({ app } = await createApp());
+    const response = await postEvent(app, "panel-0042", {
+      event_id: uuid(),
+      type: "sensor_closed",
+      occurred_at: "2026-09-29T14:00:00Z",
+      payload: { sensor_id: 4 },
+    });
+    expect(response.statusCode).toBe(201);
+    expect((await getDevice(app, "panel-0042")).json()).toMatchObject({
+      open_sensors: [],
+      arm_state: "disarmed",
     });
   });
 

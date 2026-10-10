@@ -45,6 +45,19 @@ export type Repository = {
     offlineAfterMs: number,
     status: "online" | "offline",
   ): Promise<Pick<DeviceRecord, "deviceId" | "lastSeenAt">[]>;
+  listDeviceEvents(
+    deviceId: string,
+    opts: {
+      since: Date | null;
+      afterId: string | null;
+      limit: number;
+    },
+  ): Promise<{ events: StoredEvent[]; cursor: HistoryCursor | null } | null>;
+};
+
+export type HistoryCursor = {
+  occurredAt: Date;
+  id: string;
 };
 
 export function createRepository(pool: Pool): Repository {
@@ -57,6 +70,9 @@ export function createRepository(pool: Pool): Repository {
     },
     listDevicesByLastSeen(now, offlineAfterMs, status) {
       return listDevicesByLastSeen(pool, now, offlineAfterMs, status);
+    },
+    listDeviceEvents(deviceId, opts) {
+      return listDeviceEvents(pool, deviceId, opts);
     },
   };
 }
@@ -170,6 +186,53 @@ async function listDevicesByLastSeen(
     deviceId: row.device_id,
     lastSeenAt: row.last_seen_at,
   }));
+}
+
+async function listDeviceEvents(
+  pool: Pool,
+  deviceId: string,
+  opts: {
+    since: Date | null;
+    afterId: string | null;
+    limit: number;
+  },
+): Promise<{ events: StoredEvent[]; cursor: HistoryCursor | null } | null> {
+  const exists = await pool.query(
+    `SELECT 1 FROM device_state WHERE device_id = $1`,
+    [deviceId],
+  );
+  if ((exists.rowCount ?? 0) === 0) {
+    return null;
+  }
+
+  // Seek by (occurred_at, id), not OFFSET: a new insert with an earlier
+  // occurred_at must not shift later pages.
+  const result = await pool.query<EventRow>(
+    `SELECT id, device_id, event_id, type, occurred_at, payload, received_at
+     FROM events
+     WHERE device_id = $1
+       AND (
+         $2::timestamptz IS NULL
+         OR ($3::bigint IS NULL AND occurred_at >= $2)
+         OR (occurred_at > $2)
+         OR ($3::bigint IS NOT NULL AND occurred_at = $2 AND id > $3)
+       )
+     ORDER BY occurred_at ASC, id ASC
+     LIMIT $4`,
+    [deviceId, opts.since, opts.afterId, opts.limit + 1],
+  );
+
+  const hasMore = result.rows.length > opts.limit;
+  const rows = hasMore ? result.rows.slice(0, opts.limit) : result.rows;
+  const last = rows[rows.length - 1];
+
+  return {
+    events: rows.map(toStoredEvent),
+    cursor:
+      hasMore && last
+        ? { occurredAt: last.occurred_at, id: String(last.id) }
+        : null,
+  };
 }
 
 async function updateDeviceState(

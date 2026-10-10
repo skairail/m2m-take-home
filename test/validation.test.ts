@@ -60,6 +60,22 @@ describe("validation", () => {
     expect(response.statusCode).toBe(400);
   });
 
+  it("accepts a 64-character device_id and rejects 65", async () => {
+    ({ app } = await createApp());
+    const okId = "a".repeat(64);
+    const tooLong = "a".repeat(65);
+    const body = {
+      event_id: uuid(),
+      type: "heartbeat",
+      occurred_at: "2026-09-29T14:00:00Z",
+      payload: { battery_pct: 80, rssi_dbm: -60 },
+    };
+    expect((await postEvent(app, okId, body)).statusCode).toBe(201);
+    expect(
+      (await postEvent(app, tooLong, { ...body, event_id: uuid() })).statusCode,
+    ).toBe(400);
+  });
+
   it("returns Fastify JSON parse errors in the shared format", async () => {
     ({ app } = await createApp());
     const response = await app.inject({

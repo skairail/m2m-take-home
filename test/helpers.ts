@@ -71,6 +71,19 @@ export async function getDevices(
   });
 }
 
+export async function getDeviceEvents(
+  app: FastifyInstance,
+  deviceId: string,
+  query = "",
+  token = TOKEN,
+): Promise<LightMyRequestResponse> {
+  return app.inject({
+    method: "GET",
+    url: `/devices/${deviceId}/events${query}`,
+    headers: auth(token),
+  });
+}
+
 export function uuid(): string {
   return randomUUID();
 }
