@@ -145,8 +145,33 @@ describe("history", () => {
     expect(badSince.statusCode).toBe(400);
     expect(badSince.json()).toEqual({
       error: true,
-      message: "since must be an ISO 8601 timestamp",
+      message: "since must be an ISO 8601 timestamp with a time zone",
     });
+
+    const noOffset = await getDeviceEvents(
+      app,
+      "panel-0042",
+      "?since=2026-09-29T14:00:00",
+    );
+    expect(noOffset.statusCode).toBe(400);
+
+    const outOfRange = await getDeviceEvents(
+      app,
+      "panel-0042",
+      "?since=2026-09-29T14:00:00Z&after_id=99999999999999999999",
+    );
+    expect(outOfRange.statusCode).toBe(400);
+    expect(outOfRange.json()).toEqual({
+      error: true,
+      message: "after_id must be a positive integer",
+    });
+
+    const maxBigint = await getDeviceEvents(
+      app,
+      "panel-0042",
+      "?since=2026-09-29T14:00:00Z&after_id=9223372036854775807",
+    );
+    expect(maxBigint.statusCode).toBe(200);
 
     const badLimit = await getDeviceEvents(app, "panel-0042", "?limit=0");
     expect(badLimit.statusCode).toBe(400);

@@ -103,6 +103,21 @@ describe("applyEvent", () => {
     expect(state.armMode).toBe("stay");
   });
 
+  it("never moves last_seen_at backwards when an older request commits later", () => {
+    const later = new Date("2026-09-29T14:10:00Z");
+    const state = applyEvent(
+      initialDeviceState("panel", later),
+      {
+        event_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+        type: "heartbeat",
+        occurred_at: now,
+        payload: { battery_pct: 87, rssi_dbm: -71 },
+      },
+      now,
+    );
+    expect(state.lastSeenAt).toEqual(later);
+  });
+
   it("closes an open sensor and does not mutate the previous state", () => {
     const opened = applyEvent(
       initialDeviceState("panel", now),

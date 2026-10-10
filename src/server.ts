@@ -15,10 +15,21 @@ async function main(): Promise<void> {
     logger: true,
   });
 
+  let shuttingDown = false;
   const shutdown = async () => {
-    await app.close();
-    await pool.end();
-    process.exit(0);
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+    let code = 0;
+    try {
+      await app.close();
+      await pool.end();
+    } catch (err) {
+      console.error(err);
+      code = 1;
+    }
+    process.exit(code);
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);

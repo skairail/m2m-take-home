@@ -142,4 +142,45 @@ describe("ingest", () => {
     expect(count.rows[0].n).toBe(1);
     expect((await deviceRow(deviceId))?.last_seen_at).toEqual(now);
   });
+
+  it("serializes concurrent new events for one device so no update is lost", async () => {
+    const deviceId = "panel-race";
+    const now = new Date("2026-09-29T14:00:00Z");
+    const sensorIds = Array.from({ length: 20 }, (_, i) => i + 1);
+
+    await Promise.all(
+      sensorIds.map((sensor_id) =>
+        repo.ingest(
+          deviceId,
+          {
+            event_id: uuid(),
+            type: "sensor_opened",
+            occurred_at: now,
+            payload: { sensor_id },
+          },
+          now,
+        ),
+      ),
+    );
+
+    expect((await deviceRow(deviceId))?.open_sensors.sort((a, b) => a - b)).toEqual(
+      sensorIds,
+    );
+  });
+
+  it("keeps the newest last_seen_at when an older request commits later", async () => {
+    const deviceId = "panel-late";
+    const heartbeat = () => ({
+      event_id: uuid(),
+      type: "heartbeat" as const,
+      occurred_at: new Date("2026-09-29T14:00:00Z"),
+      payload: { battery_pct: 50, rssi_dbm: -40 },
+    });
+    const newer = new Date("2026-09-29T14:10:00Z");
+
+    await repo.ingest(deviceId, heartbeat(), newer);
+    await repo.ingest(deviceId, heartbeat(), new Date("2026-09-29T14:00:00Z"));
+
+    expect((await deviceRow(deviceId))?.last_seen_at).toEqual(newer);
+  });
 });

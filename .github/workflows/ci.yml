@@ -2,19 +2,25 @@ name: ci
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
       - run: npm ci
       - run: npm run lint
@@ -22,6 +28,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     services:
       postgres:
         image: postgres:16-alpine
@@ -37,20 +44,35 @@ jobs:
           --health-timeout 3s
           --health-retries 10
     env:
-      DATABASE_URL: postgres://ingest:ingest@127.0.0.1:5432/ingest
-      DEVICE_TOKEN: test-token
+      TEST_DATABASE_URL: postgres://ingest:ingest@127.0.0.1:5432/ingest_test
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
       - run: npm ci
       - run: npm test
 
   build-image:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [lint, test]
+    env:
+      DEVICE_TOKEN: ci-smoke-token
     steps:
       - uses: actions/checkout@v7.0.1
-      - run: docker build -t device-event-ingest:ci .
+      - run: docker compose up -d --build --wait
+      - name: Smoke test the running image
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -fsS -H "X-Device-Token: $DEVICE_TOKEN" \
+              "http://127.0.0.1:3000/devices?status=online"; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker compose logs app
+          exit 1
+      - if: always()
+        run: docker compose down -v
