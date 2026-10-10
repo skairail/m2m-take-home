@@ -1,0 +1,56 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ingest
+          POSTGRES_PASSWORD: ingest
+          POSTGRES_DB: ingest
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ingest -d ingest"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://ingest:ingest@127.0.0.1:5432/ingest
+      DEVICE_TOKEN: test-token
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  build-image:
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - run: docker build -t device-event-ingest:ci .
