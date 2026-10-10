@@ -3,7 +3,7 @@ import { loadConfig } from "../src/config.js";
 
 const validEnv = {
   DEVICE_TOKEN: "secret",
-  DATABASE_URL: "postgres://ingest:ingest@127.0.0.1:5432/ingest",
+  DATABASE_URL: "postgres://ingest:ingest@127.0.0.1:5433/ingest",
   OFFLINE_THRESHOLD_SECONDS: "300",
   PORT: "3000",
 };
@@ -13,11 +13,11 @@ describe("loadConfig", () => {
     expect(
       loadConfig({
         DEVICE_TOKEN: "secret",
-        DATABASE_URL: "postgres://ingest:ingest@127.0.0.1:5432/ingest",
+        DATABASE_URL: "postgres://ingest:ingest@127.0.0.1:5433/ingest",
       }),
     ).toEqual({
       deviceToken: "secret",
-      databaseUrl: "postgres://ingest:ingest@127.0.0.1:5432/ingest",
+      databaseUrl: "postgres://ingest:ingest@127.0.0.1:5433/ingest",
       offlineThresholdSeconds: 300,
       port: 3000,
     });
