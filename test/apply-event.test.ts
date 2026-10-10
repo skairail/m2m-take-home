@@ -102,6 +102,33 @@ describe("applyEvent", () => {
     expect(state.armState).toBe("armed");
     expect(state.armMode).toBe("stay");
   });
+
+  it("closes an open sensor and does not mutate the previous state", () => {
+    const opened = applyEvent(
+      initialDeviceState("panel", now),
+      {
+        event_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+        type: "sensor_opened",
+        occurred_at: now,
+        payload: { sensor_id: 4 },
+      },
+      now,
+    );
+    const later = new Date("2026-09-29T14:01:00Z");
+    const closed = applyEvent(
+      opened,
+      {
+        event_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2",
+        type: "sensor_closed",
+        occurred_at: later,
+        payload: { sensor_id: 4 },
+      },
+      later,
+    );
+    expect(opened.openSensors).toEqual([4]);
+    expect(closed.openSensors).toEqual([]);
+    expect(closed.lastSeenAt).toEqual(later);
+  });
 });
 
 describe("deviceStatus", () => {
