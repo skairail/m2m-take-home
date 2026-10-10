@@ -11,6 +11,7 @@ export {
   EVENT_TYPES,
   deviceIdSchema,
   eventEnvelopeSchema,
+  isoTimestampSchema,
   parseDeviceId,
   parseEventEnvelope,
   type ArmedPayload,

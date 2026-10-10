@@ -84,9 +84,11 @@ async function ingest(
   now: Date,
 ): Promise<IngestResult> {
   const client = await pool.connect();
+  let releaseError: Error | undefined;
   try {
     await client.query("BEGIN");
 
+    // ON CONFLICT DO NOTHING: a retry never updates the row or device_state.
     const inserted = await client.query<EventRow>(
       `INSERT INTO events (
          device_id, event_id, type, occurred_at, payload, received_at
@@ -124,6 +126,7 @@ async function ingest(
       [deviceId, now],
     );
 
+    // FOR UPDATE: two new events for the same device cannot interleave applyEvent.
     const locked = await client.query<DeviceRow>(
       `SELECT device_id, last_seen_at, arm_state, arm_mode, open_sensors
        FROM device_state
@@ -133,16 +136,20 @@ async function ingest(
     );
 
     const current = toDeviceState(locked.rows[0]);
+    // `now` is server receive time; occurred_at is the device clock and can be wrong.
     const next = applyEvent(current, event, now);
     await updateDeviceState(client, next);
 
     await client.query("COMMIT");
     return { created: true, event: toStoredEvent(inserted.rows[0]) };
   } catch (err) {
-    await client.query("ROLLBACK");
+    // A failed ROLLBACK means the connection is unusable: destroy it, keep the original error.
+    await client.query("ROLLBACK").catch((rollbackErr: Error) => {
+      releaseError = rollbackErr;
+    });
     throw err;
   } finally {
-    client.release();
+    client.release(releaseError);
   }
 }
 
@@ -205,8 +212,8 @@ async function listDeviceEvents(
     return null;
   }
 
-  // Seek by (occurred_at, id), not OFFSET: a new insert with an earlier
-  // occurred_at must not shift later pages.
+  // Cursor (occurred_at, id), not OFFSET: an insert with an earlier
+  // occurred_at must not shift later pages. `id` is arrival order.
   const result = await pool.query<EventRow>(
     `SELECT id, device_id, event_id, type, occurred_at, payload, received_at
      FROM events

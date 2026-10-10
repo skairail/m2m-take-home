@@ -38,7 +38,10 @@ export async function buildApp(opts: {
         ? err.statusCode
         : 500;
 
-    if (status === 400 || status === 415) {
+    if (status === 413) {
+      return sendError(reply, 413, "payload too large");
+    }
+    if (status >= 400 && status < 500) {
       return sendError(reply, 400, "invalid json body");
     }
 

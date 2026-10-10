@@ -14,13 +14,16 @@ const uuidSchema = z
   .string()
   .uuid({ message: "event_id must be a UUID" });
 
-const occurredAtSchema = z
-  .string()
-  .min(1, "occurred_at must be an ISO 8601 timestamp")
-  .refine((value) => !Number.isNaN(Date.parse(value)), {
-    message: "occurred_at must be an ISO 8601 timestamp",
-  })
-  .transform((value) => new Date(value));
+// Explicit offset required: without one, Date.parse uses the host time zone.
+export function isoTimestampSchema(field: string) {
+  const message = `${field} must be an ISO 8601 timestamp with a time zone`;
+  return z
+    .string({ message })
+    .datetime({ offset: true, message })
+    .transform((value) => new Date(value));
+}
+
+const occurredAtSchema = isoTimestampSchema("occurred_at");
 
 const armedPayload = z
   .object({
