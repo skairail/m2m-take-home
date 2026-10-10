@@ -1,11 +1,12 @@
 import { systemClock } from "./clock.js";
 import { loadConfig } from "./config.js";
-import { createPool } from "./db.js";
+import { createPool, migrate } from "./db/index.js";
 import { buildApp } from "./http/app.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
   const pool = createPool(config.databaseUrl);
+  await migrate(pool);
 
   const app = await buildApp({
     config,
@@ -29,4 +30,3 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
-
